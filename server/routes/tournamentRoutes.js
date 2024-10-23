@@ -2,7 +2,7 @@ const express = require("express");
 const {
   createTournament,
   upload,
-  getTournaments,
+  getTournamentHistory,
   deleteTournament,
   updateTournament,
   getTournamentById,
@@ -15,6 +15,9 @@ const router = express.Router();
 
 // Route to create a new tournament
 router.post("/tournaments", upload.single("image"), createTournament);
+
+//Route to get tournament history
+router.get("/get-tournament-history", getTournamentHistory);
 
 // // Route to get all tournaments
 // router.get("/tournaments", getTournaments);

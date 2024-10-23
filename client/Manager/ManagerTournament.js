@@ -163,42 +163,16 @@
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   FlatList,
   Image,
   ScrollView,
 } from "react-native";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation } from "@react-navigation/native";
-
-const createScoreCardUsers = [
-  {
-    id: 1,
-    name: "BCS Legends",
-    status: "",
-    description: "Double Elimination",
-    added: false,
-    image: require("../assets/India.png"),
-  },
-  {
-    id: 2,
-    name: "BCS Legends",
-    status: "",
-    description: "Double Elimination",
-    added: true,
-    image: require("../assets/India.png"),
-  },
-  {
-    id: 3,
-    name: "BCS Legends",
-    status: "Win Last match",
-    description: "Double Elimination",
-    added: true,
-    image: require("../assets/India.png"),
-  },
-];
+import styles from "./styles/Manager_Tournament";
+import config from "../components/config";
 
 const teamHistory = [
   {
@@ -228,8 +202,8 @@ const teamHistory = [
 ];
 
 const Tournament = () => {
-  const [userData, setUserData] = useState(createScoreCardUsers);
   const [teamData, setTeamData] = useState(teamHistory);
+  const [tournamentData, setTournamentData] = useState([]);
   const navigation = useNavigation();
 
   const navigateToCreateTournament = () => {
@@ -237,7 +211,7 @@ const Tournament = () => {
   };
 
   const navigateToUserDetails = (Create_Group) => {
-    navigation.navigate("Create_Group", { Create_Group }); // Pass user data to the next screen
+    navigation.navigate("Create_Group", { Create_Group });
   };
 
   const toggleTeamAdded = (teamId) => {
@@ -248,20 +222,34 @@ const Tournament = () => {
     );
   };
 
-  const UserItem = ({ user }) => (
-    <TouchableOpacity onPress={() => navigateToUserDetails(user)}>
-      <View style={styles.userItem}>
-        <Image source={user.image} style={styles.avatar} />
-        <View style={styles.info}>
-          <View style={styles.containers}>
-            <Text style={styles.name}>{user.name}</Text>
-            <Text style={styles.status}>{user.status}</Text>
+  // Tournament.js React Native Component
+  const TournamentItem = ({ tournament }) => {
+    // Use the base64 image data from the tournament data
+    const imageSource = tournament.imageBase64
+      ? { uri: tournament.imageBase64 }
+      : null;
+
+    return (
+      <TouchableOpacity onPress={() => navigateToUserDetails(tournament)}>
+        <View style={styles.userItem}>
+          {imageSource ? (
+            <Image source={imageSource} style={styles.avatar} />
+          ) : (
+            <Text style={styles.noImageText}>No Image Available</Text>
+          )}
+          <View style={styles.info}>
+            <View style={styles.containers}>
+              <Text style={styles.name}>{tournament.tournamentname}</Text>
+              <Text style={styles.status}>{tournament.tournamenttype}</Text>
+            </View>
+            <Text style={styles.description}>
+              {tournament.eventdescription}
+            </Text>
           </View>
-          <Text style={styles.description}>{user.description}</Text>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const TeamItem = ({ team }) => (
     <View style={styles.teamItem}>
@@ -274,7 +262,6 @@ const Tournament = () => {
         <Text style={styles.description}>{team.description}</Text>
       </View>
 
-      {/* Apply different styles for Add and Added */}
       <TouchableOpacity
         style={team.added ? styles.addedButton : styles.addButton}
         onPress={() => toggleTeamAdded(team.id)}
@@ -294,6 +281,36 @@ const Tournament = () => {
     </View>
   );
 
+  useEffect(() => {
+    const fetchTournamentHistory = async () => {
+      try {
+        console.log("Fetching tournament history...");
+        const response = await fetch(
+          `${config.backendUrl}/get-tournament-history`
+        );
+
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+
+        const data = await response.json();
+        console.log("Response received:", data);
+
+        if (data.success) {
+          console.log("Tournament data:", data.data);
+          setTournamentData(data.data);
+          console.log("Tournament data set successfully:", data.data);
+        } else {
+          console.error("Failed to fetch tournament history:", data.message);
+        }
+      } catch (error) {
+        console.error("Error fetching tournament history:", error);
+      }
+    };
+
+    fetchTournamentHistory();
+  }, []);
+
   return (
     <ScrollView style={styles.scrollView}>
       <View style={styles.container}>
@@ -311,9 +328,9 @@ const Tournament = () => {
 
       <View style={styles.container}>
         <FlatList
-          data={userData}
-          renderItem={({ item }) => <UserItem user={item} />}
-          keyExtractor={(item) => item.id.toString()}
+          data={tournamentData}
+          renderItem={({ item }) => <TournamentItem tournament={item} />}
+          keyExtractor={(item) => item._id} // Assuming _id is the unique identifier from MongoDB
         />
       </View>
 
@@ -329,116 +346,5 @@ const Tournament = () => {
     </ScrollView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    marginLeft: 16,
-    marginTop: 20,
-    textAlign: "center",
-  },
-  containers: {
-    marginLeft: 16,
-    marginTop: 30,
-    padding: 16,
-    textAlign: "center",
-  },
-  Btndata: {
-    flexDirection: "row",
-  },
-  buttonContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 5,
-    borderWidth: 1,
-    borderColor: "#007AFF",
-    borderRadius: 100,
-    paddingHorizontal: 10,
-  },
-  buttonText: {
-    fontSize: 14,
-    color: "#007AFF",
-    padding: 10,
-  },
-  historyText: {
-    marginTop: 18,
-    marginBottom: 18,
-    fontSize: 20,
-    color: "#000",
-  },
-  containers: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  status: {
-    fontSize: 11,
-    color: "#6e6e6e",
-  },
-  userItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    marginBottom: 10,
-    borderRadius: 8,
-  },
-  teamItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    marginBottom: 10,
-    borderRadius: 8,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  info: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  description: {
-    fontSize: 14,
-    color: "#6e6e6e",
-  },
-  addButton: {
-    backgroundColor: "#007AFF",
-    borderRadius: 20,
-    paddingVertical: 5,
-    width: 70,
-    flexDirection: "row",
-    paddingLeft: 7,
-    textAlign: "center",
-  },
-  addedButton: {
-    flexDirection: "row",
-    borderRadius: 20,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#007AFF",
-    paddingVertical: 5,
-    paddingHorizontal: 15,
-  },
-  addText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
-  addedText: {
-    color: "#007AFF",
-  },
-  icon: {
-    color: "#007AFF",
-    marginLeft: 10,
-  },
-});
 
 export default Tournament;
