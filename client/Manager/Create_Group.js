@@ -112,7 +112,7 @@ const TournamentScreen = ({ navigation }) => {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* Image Upload Section */}
-      <Text style={styles.text}>Add Photo / Team Logo</Text>
+      <Text style={styles.text}>Add Team Logo</Text>
       <View style={styles.imageContainer}>
         {imageUri ? (
           <Image style={styles.image} source={{ uri: imageUri }} />
@@ -127,7 +127,7 @@ const TournamentScreen = ({ navigation }) => {
       {/* Tournament Name Input */}
       <TextInput
         style={styles.input}
-        placeholder="Name your Tournament / League"
+        placeholder="Name your group"
         value={tournamentName}
         onChangeText={(text) => setTournamentName(text)}
       />

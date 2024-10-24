@@ -177,44 +177,6 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Configure storage for Multer
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (_, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Append timestamp to file name
-  },
-});
-
-const upload = multer({ storage });
-
-// Create uploads directory if it doesn't exist
-const dir = "uploads";
-if (!fs.existsSync(dir)) {
-  fs.mkdirSync(dir);
-}
-
-// Route for uploading images
-router.post("/upload", upload.single("image"), (req, res) => {
-  try {
-    if (!req.file) {
-      console.log("No file uploaded");
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-    console.log("File uploaded successfully:", req.file.filename);
-    res.json({
-      imageUrl: `http://192.168.0.173:5050/api/uploads/${req.file.filename}`,
-    });
-  } catch (error) {
-    console.error("Error during file upload:", error);
-    res.status(500).json({ error: "Failed to upload image" });
-  }
-});
-
-// Serve static files from the uploads directory
-router.use("/uploads", express.static("uploads"));
-
 // Register a new user (this remains unchanged)
 router.post("/register", async (req, res) => {
   const { name, email, mobile, password, role, age, website, members } =
@@ -353,6 +315,34 @@ router.post("/superadminlogin", async (req, res) => {
     }
   } catch (err) {
     return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Endpoint to fetch manager ID
+// Endpoint to fetch manager ID
+router.get("/managerId", async (req, res) => {
+  try {
+    // Fetch the manager, customize the query as needed
+    const manager = await Manager.findOne(); // Update to filter based on criteria if necessary
+
+    if (!manager) {
+      return res.status(404).json({
+        success: false,
+        message: "Manager not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      managerId: manager._id, // Assuming _id is your managerId
+    });
+  } catch (error) {
+    console.error("Error fetching manager ID:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching manager ID",
+      error: error.message,
+    });
   }
 });
 

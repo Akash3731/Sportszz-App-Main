@@ -17,7 +17,6 @@ import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import config from "../components/config";
-import styles from "./styles/Create_Tournament_Styles";
 
 const Create_Tournament = () => {
   const [selectedValue, setSelectedValue] = useState("Select an option");
@@ -59,6 +58,25 @@ const Create_Tournament = () => {
   const addCourt = () => {
     const newCourtNumber = courts.length + 1;
     setCourts([...courts, `Court ${newCourtNumber}`]);
+  };
+
+  // Function to fetch Manager ID
+  // Function to fetch Manager ID
+  const fetchManagerId = async () => {
+    try {
+      const response = await fetch(`${config.backendUrl}/managerId`);
+      const result = await response.json();
+
+      if (result.success) {
+        return result.managerId; // Return the managerId directly
+      } else {
+        console.error(result.message);
+        return null; // Return null if fetching fails
+      }
+    } catch (error) {
+      console.error("Error fetching manager ID:", error);
+      return null; // Return null on error
+    }
   };
 
   // Updated handleImageUpload function to use Expo Image Picker
@@ -109,22 +127,39 @@ const Create_Tournament = () => {
     try {
       console.log("Submitting tournament creation form...");
 
+      // Validate the form before proceeding
       if (!validateForm()) {
         console.log("Form validation failed.");
+        Alert.alert("Validation Error", "Please fill in all required fields.");
         return;
       }
+
       console.log("Form validation passed.");
 
+      // Fetch the manager ID
+      const managerId = await fetchManagerId(); // Get the managerId directly
+      if (!managerId) {
+        console.log("Manager ID could not be retrieved.");
+        Alert.alert(
+          "Error",
+          "Could not retrieve Manager ID. Please try again."
+        );
+        return; // Stop if manager ID cannot be fetched
+      }
+
+      // Create a new FormData object
       const formData = new FormData();
 
-      // Append basic text fields
+      // Append basic text fields to formData
       formData.append("tournamentname", tournamentName);
       formData.append("tournamenttype", selectedValue);
       formData.append("eventdescription", eventDescription);
       formData.append("cancellationpolicy", cancellationPolicy);
       formData.append("eventlocation", eventLocation);
       formData.append("selectcourt", JSON.stringify({ name: selectedCourt }));
+      formData.append("managerId", managerId);
 
+      console.log("Manager id: ", managerId);
       // Format and append time data
       const timeData = {
         timeSlot: selectedTime.split(" ")[0],
@@ -152,23 +187,20 @@ const Create_Tournament = () => {
         });
       }
 
-      // Log FormData contents for debugging (excluding binary data)
-      console.log(
-        "FormData parts:",
-        formData._parts.map((part) =>
-          typeof part[1] === "object" ? `[File: ${part[1].name}]` : part
-        )
+      // Send the form data to the server, including managerId in the URL
+      const response = await fetch(
+        `${config.backendUrl}/tournaments?managerId=${managerId}`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            // "Content-Type" header can be omitted for FormData
+          },
+          body: formData,
+        }
       );
 
-      const response = await fetch(`${config.backendUrl}/tournaments`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "multipart/form-data",
-        },
-        body: formData,
-      });
-
+      // Process the server response
       const result = await response.json();
 
       if (response.ok) {
@@ -177,17 +209,9 @@ const Create_Tournament = () => {
           {
             text: "OK",
             onPress: () => {
-              // Clear form and navigate
-              setImageUri(null);
-              setTournamentName("");
-              setSelectedValue("");
-              setEventDescription("");
-              setCancellationPolicy("");
-              setEventLocation("");
-              setSelectedCourt("");
-              setSelectedTime("");
-              setIsAllDay(false);
-              // Adjust based on your navigation setup
+              // Reset the form after successful submission
+              resetForm();
+              // Navigate or perform other actions as needed
             },
           },
         ]);
@@ -201,6 +225,19 @@ const Create_Tournament = () => {
         error.message || "Failed to create tournament. Please try again."
       );
     }
+  };
+
+  // Helper function to reset the form fields
+  const resetForm = () => {
+    setImageUri(null);
+    setTournamentName("");
+    setSelectedValue("");
+    setEventDescription("");
+    setCancellationPolicy("");
+    setEventLocation("");
+    setSelectedCourt("");
+    setSelectedTime("");
+    setIsAllDay(false);
   };
 
   const validateForm = () => {
@@ -550,6 +587,259 @@ const pickerSelectStyles = StyleSheet.create({
     borderRadius: 5,
     color: "#333", // Text color for Android
     paddingRight: 30, // Adjust padding for dropdown arrow
+  },
+});
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: "#F8F8F8",
+    paddingLeft: 20,
+    paddingRight: 20,
+    flex: 1,
+    alignItems: "center",
+    paddingTop: 30,
+  },
+  text: {
+    fontSize: 17,
+  },
+  imageContainer: {
+    marginTop: 20,
+    marginBottom: 35,
+    alignItems: "center",
+    position: "relative",
+  },
+  iconContainer: {
+    position: "absolute",
+    bottom: 5, // Positioning the icons at the bottom
+    left: "13%", // Adjust to your desired position
+    backgroundColor: "#000", // Semi-transparent background
+    borderRadius: 20,
+    padding: 5,
+    marginLeft: 5,
+  },
+  image: {
+    height: 88,
+    width: 88,
+    borderRadius: 44,
+    backgroundColor: "#D9D9D9",
+  },
+  form: {
+    marginTop: 20,
+    width: "100%",
+  },
+  inputContainer: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  icon: {
+    paddingLeft: 90,
+    position: "absolute",
+    left: "80%",
+  },
+
+  input: {
+    height: 50,
+    paddingLeft: 20,
+    borderRadius: 5,
+    fontSize: 16,
+    color: "#333", // Input text color
+  },
+  picker: {
+    height: 50, // Match input height
+    width: "100%",
+  },
+  players: {
+    width: "100%",
+    flexDirection: "row",
+    marginTop: 35,
+
+    gap: 60,
+    justifyContent: "space-between",
+  },
+  buttonscontainer: {
+    width: "100%",
+    flexDirection: "row",
+    marginTop: 35,
+    justifyContent: "space-between",
+  },
+  shuffle: {
+    marginTop: 15,
+    height: 48,
+    width: "100%",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  shufflebtn: {
+    fontSize: 16,
+  },
+  playersrow: {
+    flexDirection: "row",
+    gap: 16,
+    alignItems: "center",
+  },
+  buttonrowrow: {
+    flexDirection: "row",
+    gap: 13,
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+
+  teamImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#D9D9D9",
+  },
+  teamText: {
+    fontSize: 16,
+  },
+  Court: {
+    marginTop: 35,
+    marginBottom: 15,
+  },
+  selectcourt: {
+    fontSize: 17,
+    textAlign: "left",
+    alignItems: "flex-start",
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+  courtRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  courtButton: {
+    padding: 10,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  courtButtonSelected: {
+    backgroundColor: "#1E90FF",
+    color: "#fff",
+  },
+  courtButtonText: {
+    color: "#333",
+  },
+  addCourtButton: {
+    padding: 10,
+    borderRadius: 20,
+    backgroundColor: "#ddd",
+    height: 40,
+  },
+  addCourtText: {
+    color: "#000",
+  },
+  dateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  dateButton: {
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#E0E0E0",
+  },
+  dateButtonSelected: {
+    backgroundColor: "#1E90FF",
+  },
+  dateText: {
+    color: "#333",
+  },
+  timeTabsContainer: {
+    flexDirection: "row",
+    marginBottom: 10,
+    width: "50%",
+  },
+  timeTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  timeTabActive: {
+    backgroundColor: "#1E90FF",
+  },
+  timeTabInactive: {
+    backgroundColor: "#E0E0E0",
+  },
+  timeTabText: {
+    color: "#333",
+  },
+  timeTabTextActive: {
+    color: "#FFF",
+  },
+  timeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  timeButton: {
+    padding: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    width: "25%",
+    marginBottom: 10,
+    alignItems: "center",
+  },
+  timeButtonSelected: {
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+    backgroundColor: "rgba(0, 122, 255, 0.1)",
+  },
+  timeButtonText: {
+    color: "#333",
+  },
+  allDayContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    width: "100%",
+  },
+  allDayText: {
+    fontSize: 16,
+  },
+  generateButton: {
+    padding: 15,
+    borderRadius: 10,
+    backgroundColor: "#1E90FF",
+    alignItems: "center",
+    width: "100%",
+  },
+  generateButtonText: {
+    color: "#FFF",
+    fontSize: 18,
+  },
+  selectedButtonText: {
+    color: "#fff",
+  },
+  switchStyle: {
+    width: 52,
+    height: 32,
+  },
+  icon: {
+    marginRight: 10, // Adds spacing between the icon and the input field
   },
 });
 

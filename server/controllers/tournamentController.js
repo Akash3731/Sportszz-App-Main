@@ -29,10 +29,15 @@ exports.createTournament = async (req, res) => {
     console.log("File:", req.file);
 
     // Validate required fields
-    if (!req.body.tournamentname || !req.body.tournamenttype) {
+    if (
+      !req.body.tournamentname ||
+      !req.body.tournamenttype ||
+      !req.body.managerId
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Required fields are missing",
+        message:
+          "Required fields (tournamentname, tournamenttype, or managerId) are missing",
       });
     }
 
@@ -70,6 +75,7 @@ exports.createTournament = async (req, res) => {
       selectcourt: courtData,
       selecttime: timeData,
       allday: req.body.allday === "true",
+      managerId: req.body.managerId, // Include managerId in the data
     };
 
     // Handle image if it exists

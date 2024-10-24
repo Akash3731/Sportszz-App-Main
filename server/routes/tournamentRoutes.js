@@ -14,7 +14,9 @@ const {
 const router = express.Router();
 
 // Route to create a new tournament
-router.post("/tournaments", upload.single("image"), createTournament);
+router.post("/tournaments", upload.single("image"), (req, res) =>
+  createTournament(req, res, req.body.managerId)
+);
 
 //Route to get tournament history
 router.get("/get-tournament-history", getTournamentHistory);

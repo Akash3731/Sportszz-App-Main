@@ -77,6 +77,11 @@ const TournamentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    managerId: {
+      type: mongoose.Schema.Types.ObjectId, // Use ObjectId to reference another document
+      ref: "Manager", // Reference the 'Manager' model (or whatever model holds manager data)
+      required: true, // Ensure that a manager is always associated with a tournament
+    },
   },
   { timestamps: true }
 );
