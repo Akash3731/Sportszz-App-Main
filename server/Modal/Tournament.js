@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const Group = require("./Group"); // Import the Group model
+const GroupSchema = require("./Group"); // Import the Group model
 
 const TournamentSchema = new mongoose.Schema(
   {
@@ -55,7 +55,7 @@ const TournamentSchema = new mongoose.Schema(
       ref: "Manager",
       required: true,
     },
-    groups: [Group.schema], // Reference the Group schema
+    groups: [GroupSchema], // Reference the Group schema
   },
   { timestamps: true }
 );

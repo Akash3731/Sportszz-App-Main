@@ -9,11 +9,12 @@ import {
   ScrollView,
   Button,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import * as ImagePicker from "expo-image-picker"; // Use expo-image-picker to select images
 import axios from "axios";
-import config from "../components/config";
+import config from "../components/config.cjs";
 import * as FileSystem from "expo-file-system";
 
 const TournamentScreen = ({ navigation, route }) => {
@@ -21,6 +22,7 @@ const TournamentScreen = ({ navigation, route }) => {
   const [groups, setGroups] = useState([]);
   const [imageUri, setImageUri] = useState(null);
   const [tournamentId, setTournamentId] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   // Fetch tournament ID directly from the database using the provided ID from route params
   useEffect(() => {
@@ -77,10 +79,10 @@ const TournamentScreen = ({ navigation, route }) => {
     setGroups(newGroups);
   };
 
-  const deleteGroup = (index) => {
-    const newGroups = groups.filter((_, i) => i !== index);
-    setGroups(newGroups);
-  };
+  // const deleteGroup = (index) => {
+  //   const newGroups = groups.filter((_, i) => i !== index);
+  //   setGroups(newGroups);
+  // };
 
   // Update your existing pickImage function
   const pickImage = async () => {
@@ -117,7 +119,7 @@ const TournamentScreen = ({ navigation, route }) => {
     pickImage(); // Start the image picking and uploading process
   };
 
-  // Upload function
+  // Update the uploadImage function to use the new caching system
   const uploadImage = async (uri) => {
     const formData = new FormData();
     const filename = uri.split("/").pop();
@@ -133,7 +135,7 @@ const TournamentScreen = ({ navigation, route }) => {
 
     try {
       const response = await axios.post(
-        `${config.backendUrl}/upload`,
+        `${config.backendUrl}/add-groups`,
         formData,
         {
           headers: {
@@ -143,11 +145,15 @@ const TournamentScreen = ({ navigation, route }) => {
       );
 
       if (response.data.success) {
-        console.log("Image uploaded successfully:", response.data.group.image);
-        setImageUri(response.data.group.image);
+        const imageUrl = response.data.group.image;
+        console.log("Image uploaded successfully:", imageUrl);
 
-        // Cache the image after uploading
-        await cacheImage(response.data.group.image);
+        // Try to cache the image
+        const cachedUri = await cacheImage(imageUrl);
+        if (cachedUri) {
+          setImageUri(imageUrl); // Set the remote URL for future reference
+          console.log("Image cached at:", cachedUri);
+        }
       } else {
         Alert.alert("Upload Failed", response.data.message);
       }
@@ -161,92 +167,78 @@ const TournamentScreen = ({ navigation, route }) => {
   };
 
   // Cache the image using expo-file-system
+  // Frontend changes - Update the caching function
   const cacheImage = async (imageUrl) => {
     try {
-      const fileUri = `${FileSystem.documentDirectory}${imageUrl
-        .split("/")
-        .pop()}`;
+      // Create a unique filename for the cached image
+      const filename = `cached_${imageUrl.split("/").pop()}`;
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+
       console.log("Attempting to cache image from:", imageUrl);
 
-      // Download the image
-      const response = await FileSystem.downloadAsync(imageUrl, fileUri);
+      // First check if the file already exists in cache
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      if (fileInfo.exists) {
+        console.log("Image already cached at:", fileUri);
+        return fileUri;
+      }
 
-      // Check the response status
-      if (response.status === 200) {
+      // Download the image with proper error handling
+      const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
+
+      if (downloadResult.status === 200) {
         console.log("Image cached successfully at:", fileUri);
-        return fileUri; // Return the cached file URI
+        return fileUri;
       } else {
-        console.error("Failed to cache image, status:", response.status);
-        Alert.alert("Cache Failed", "Could not cache the image.");
+        throw new Error(`Download failed with status ${downloadResult.status}`);
       }
     } catch (error) {
       console.error("Error during caching image:", error);
-      Alert.alert("Cache Failed", "An error occurred while caching the image.");
+
+      // Provide more specific error messages
+      if (error.response?.status === 404) {
+        Alert.alert(
+          "Cache Failed",
+          "The image could not be found on the server. Please try uploading again."
+        );
+      } else {
+        Alert.alert(
+          "Cache Failed",
+          "An error occurred while caching the image. Please check your connection and try again."
+        );
+      }
+      return null;
     }
   };
 
   const addGroup = async () => {
-    // Ensure groupName exists before submitting the group
-    if (groups.length === 0 && groupName !== "") {
-      handlegroupNameSubmit(); // Add the group using the current groupName
-    }
-
-    console.log("Before Adding Group: ", { groupName, groups });
-
-    // Wait a moment to ensure state is updated before validation
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    // Validate if group name and teams are present
-    if (groups.length === 0) {
-      Alert.alert(
-        "Error",
-        "Please provide a group name and at least one team."
-      );
-      console.log("Validation failed: group name or teams are missing.");
+    setLoading(true); // Start loading
+    if (groupName === "") {
+      Alert.alert("Error", "Please provide a group name.");
+      setLoading(false); // Stop loading on error
       return;
     }
 
-    const formData = new FormData();
+    console.log("Before Adding Group: ", { groupName, groups });
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Prepare image data if an image was selected
+    const formData = new FormData();
     if (imageUri) {
       const filename = imageUri.split("/").pop();
       const fileType = filename.split(".").pop();
-
       formData.append("image", {
         uri: imageUri,
         name: filename,
         type: `image/${fileType}`,
       });
-      console.log("Image selected:", {
-        uri: imageUri,
-        name: filename,
-        type: `image/${fileType}`,
-      });
-    } else {
-      console.log("No image selected.");
     }
 
-    // Append group name and tournament ID to form data
-    formData.append("name", groupName); // Use 'name' for group name
-    formData.append("tournamentId", tournamentId); // Use the tournament ID
-    console.log("FormData after appending group name and tournament ID:", {
-      name: groupName,
-      tournamentId,
-    });
-
-    // Include teams in the form data
-    groups.forEach((group) => {
-      group.teams.forEach((team) => {
-        formData.append("teams[]", JSON.stringify(team)); // Append each team
-        console.log("Appending team to FormData:", JSON.stringify(team));
-      });
-    });
+    formData.append("name", groupName);
+    formData.append("tournamentId", tournamentId);
 
     try {
-      console.log("Sending data to server...");
       const response = await axios.post(
-        `${config.backendUrl}/add-groups`, // Ensure this endpoint exists on your server
+        `${config.backendUrl}/add-groups`,
         formData,
         {
           headers: {
@@ -255,19 +247,29 @@ const TournamentScreen = ({ navigation, route }) => {
         }
       );
 
-      console.log("Response from server:", response.data); // Log the server response
-
       if (response.data.success) {
         Alert.alert("Success", "Group added successfully!");
-        console.log("Group added successfully:", response.data.group);
+        setImageUri(null);
+        setgroupName("");
 
-        // Optionally reset state or navigate away
-        setGroups([]); // Clear groups after successful submission
-        setImageUri(null); // Clear the image
-        setgroupName(""); // Clear the group name
+        // Update local state with the newly added group
+        setGroups((prevGroups) => {
+          const groupExists = prevGroups.some(
+            (group) => group.groupname === groupName
+          );
+          if (!groupExists) {
+            return [
+              ...prevGroups,
+              { groupname: groupName, _id: response.data.group._id, teams: [] },
+            ];
+          }
+          return prevGroups; // If it exists, return previous groups
+        });
+
+        // Optionally refetch groups to ensure all data is up-to-date
+        // fetchGroups(); // Uncomment this if you want to fetch again
       } else {
         Alert.alert("Error", response.data.message);
-        console.log("Error from server:", response.data.message); // Log error message
       }
     } catch (error) {
       console.error("Error adding group:", error);
@@ -275,8 +277,66 @@ const TournamentScreen = ({ navigation, route }) => {
         "Upload Failed",
         "Could not add the group. Please try again."
       );
+    } finally {
+      setLoading(false); // Stop loading in both success and error cases
     }
   };
+
+  const deleteGroup = async (tournamentId, groupId) => {
+    setLoading(true); // Start loading
+    try {
+      const response = await axios.delete(
+        `${config.backendUrl}/tournaments/${tournamentId}/groups/${groupId}`
+      );
+      if (response.data.success) {
+        console.log(response.data.message);
+        fetchGroups(); // Re-fetch groups after deletion
+      } else {
+        Alert.alert("Error", response.data.message);
+      }
+    } catch (error) {
+      console.error("Error deleting group:", error);
+      Alert.alert("Error", "Could not delete group. Please try again.");
+    } finally {
+      setLoading(false); // Stop loading in both success and error cases
+    }
+  };
+
+  const fetchGroups = async () => {
+    if (!tournamentId) {
+      console.error("Tournament ID is not available for fetching groups.");
+      return; // Exit the function if tournamentId is null
+    }
+
+    setLoading(true); // Set loading state to true
+    try {
+      const response = await axios.get(
+        `${config.backendUrl}/tournaments/${tournamentId}/groups`
+      );
+      if (response.data.success) {
+        setGroups(response.data.groups); // Set groups from the response
+        console.log("Fetched groups:", response.data.groups);
+      } else {
+        Alert.alert("Error", response.data.message);
+      }
+    } catch (error) {
+      console.error("Error fetching groups:", error);
+      Alert.alert("Error", "Could not fetch groups. Please try again.");
+    } finally {
+      setLoading(false); // Reset loading state
+    }
+  };
+
+  useEffect(() => {
+    console.log("Current tournamentId:", tournamentId); // Log the current value
+    if (tournamentId) {
+      console.log("Fetching groups for tournament ID:", tournamentId);
+      fetchGroups(); // Fetch groups whenever tournamentId changes
+    } else {
+      console.log("Tournament ID is not available yet.");
+      setGroups([]); // Clear previous groups if tournamentId is not available
+    }
+  }, [tournamentId]); // This effect runs whenever tournamentId changes
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -286,7 +346,7 @@ const TournamentScreen = ({ navigation, route }) => {
         {imageUri ? (
           <Image style={styles.image} source={{ uri: imageUri }} />
         ) : (
-          <Image style={styles.image} source={{ uri: "" }} />
+          <View style={styles.image} /> // Use View for empty state
         )}
         <TouchableOpacity
           style={styles.iconContainer}
@@ -301,20 +361,44 @@ const TournamentScreen = ({ navigation, route }) => {
         style={styles.input}
         placeholder="Name your group"
         value={groupName}
-        onChangeText={(text) => setgroupName(text)}
+        onChangeText={(text) => setGroupName(text)}
       />
       <TouchableOpacity style={styles.createGroupButton} onPress={addGroup}>
         <Text style={styles.createGroupButtonText}>Create Group</Text>
       </TouchableOpacity>
+
+      {/* Loading Indicator */}
+      {loading && <ActivityIndicator size="large" color="#0000ff" />}
 
       {/* Dynamic Group Sections */}
       {groups.map((group, groupIndex) => (
         <View key={groupIndex} style={styles.groupContainer}>
           <View style={styles.groupHeader}>
             <Text style={styles.groupName}>
-              Group Name: <Text style={styles.boldText}>{group.name}</Text>
+              Group Name: <Text style={styles.boldText}>{group.groupname}</Text>
             </Text>
-            <TouchableOpacity onPress={() => deleteGroup(groupIndex)}>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  "Confirm Deletion",
+                  "Are you sure you want to delete this group?",
+                  [
+                    {
+                      text: "Cancel",
+                      style: "cancel", // Optional styling for the cancel button
+                    },
+                    {
+                      text: "Delete",
+                      onPress: async () => {
+                        await deleteGroup(tournamentId, group._id);
+                        fetchGroups(); // Re-fetch the groups after deletion
+                      },
+                    },
+                  ],
+                  { cancelable: true } // Allows dismissal by tapping outside
+                );
+              }}
+            >
               <MaterialIcons name="delete" size={24} color="gray" />
             </TouchableOpacity>
           </View>

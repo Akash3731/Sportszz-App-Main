@@ -15,12 +15,9 @@ const GroupSchema = new mongoose.Schema({
   },
   image: {
     type: String,
-    required: false,
+    required: true,
   },
 });
 
-// Check if the Group model already exists
-const Group = mongoose.models.Group || mongoose.model("Group", GroupSchema);
-
 // Export Group model
-module.exports = Group;
+module.exports = GroupSchema;
