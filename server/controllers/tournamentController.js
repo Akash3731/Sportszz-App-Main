@@ -1,5 +1,6 @@
 // Tournament Controller (controllers/tournamentController.js)
 const Tournament = require("../Modal/Tournament");
+const mongoose = require("mongoose");
 const multer = require("multer");
 
 // Configure multer for memory storage instead of disk storage
@@ -155,6 +156,425 @@ exports.getTournamentHistory = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Error fetching tournament history",
+      error: error.message,
+    });
+  }
+};
+
+// Fetch tournament by ID
+// Assuming you have already defined the Tournament model
+exports.getTournamentById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate the ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid tournament ID",
+      });
+    }
+
+    const tournament = await Tournament.findById(id);
+
+    if (!tournament) {
+      return res.status(404).json({
+        success: false,
+        message: "Tournament not found",
+      });
+    }
+
+    // Return only the tournament ID
+    res.status(200).json({
+      success: true,
+      tournamentId: tournament._id, // or `id` if you prefer
+    });
+  } catch (error) {
+    console.error("Error fetching tournament:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching tournament",
+      error: error.message,
+    });
+  }
+};
+
+// Add group to tournament
+exports.addGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { groupName } = req.body;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    tournament.groups.push({ name: groupName });
+    await tournament.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Group added successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error adding group:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error adding group",
+      error: error.message,
+    });
+  }
+};
+
+// Edit group in tournament
+exports.editGroup = async (req, res) => {
+  try {
+    const { id, groupId } = req.params;
+    const { groupName } = req.body;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    group.name = groupName;
+    await tournament.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Group updated successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error editing group:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error editing group",
+      error: error.message,
+    });
+  }
+};
+
+// Delete group from tournament
+exports.deleteGroup = async (req, res) => {
+  try {
+    const { id, groupId } = req.params;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    group.remove();
+    await tournament.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Group deleted successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error deleting group:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting group",
+      error: error.message,
+    });
+  }
+};
+
+// Add team to tournament
+exports.addTeam = async (req, res) => {
+  try {
+    const { id, groupId } = req.params;
+    const { teamName } = req.body;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    group.teams.push({ name: teamName });
+    await tournament.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Team added successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error adding team:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error adding team",
+      error: error.message,
+    });
+  }
+};
+
+// Edit team in tournament
+exports.editTeam = async (req, res) => {
+  try {
+    const { id, groupId, teamId } = req.params;
+    const { teamName } = req.body;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    const team = group.teams.id(teamId);
+    if (!team) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Team not found" });
+    }
+
+    team.name = teamName;
+    await tournament.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Team updated successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error editing team:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error editing team",
+      error: error.message,
+    });
+  }
+};
+
+// Delete team from tournament
+exports.deleteTeam = async (req, res) => {
+  try {
+    const { id, groupId, teamId } = req.params;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    const team = group.teams.id(teamId);
+    if (!team) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Team not found" });
+    }
+
+    team.remove();
+    await tournament.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Team deleted successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error deleting team:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting team",
+      error: error.message,
+    });
+  }
+};
+
+// Add player to team
+exports.addPlayer = async (req, res) => {
+  try {
+    const { id, groupId, teamId } = req.params;
+    const { playerName } = req.body;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    const team = group.teams.id(teamId);
+    if (!team) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Team not found" });
+    }
+
+    team.players.push({ name: playerName });
+    await tournament.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Player added successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error adding player:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error adding player",
+      error: error.message,
+    });
+  }
+};
+
+// Edit player in team
+exports.editPlayer = async (req, res) => {
+  try {
+    const { id, groupId, teamId, playerId } = req.params;
+    const { playerName } = req.body;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    const team = group.teams.id(teamId);
+    if (!team) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Team not found" });
+    }
+
+    const player = team.players.id(playerId);
+    if (!player) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Player not found" });
+    }
+
+    player.name = playerName;
+    await tournament.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Player updated successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error editing player:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error editing player",
+      error: error.message,
+    });
+  }
+};
+
+// Delete player from team
+exports.deletePlayer = async (req, res) => {
+  try {
+    const { id, groupId, teamId, playerId } = req.params;
+
+    const tournament = await Tournament.findById(id);
+    if (!tournament) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tournament not found" });
+    }
+
+    const group = tournament.groups.id(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    const team = group.teams.id(teamId);
+    if (!team) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Team not found" });
+    }
+
+    const player = team.players.id(playerId);
+    if (!player) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Player not found" });
+    }
+
+    player.remove();
+    await tournament.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Player deleted successfully",
+      data: tournament,
+    });
+  } catch (error) {
+    console.error("Error deleting player:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting player",
       error: error.message,
     });
   }

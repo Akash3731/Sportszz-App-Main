@@ -1,32 +1,5 @@
-// const mongoose = require("mongoose");
-
-// const TournamentSchema = new mongoose.Schema({
-//   tournamentname: {
-//     type: String,
-//     required: true,
-//   },
-//   image: { type: String },
-//   date: {
-//     type: String,
-//     required: true,
-//   },
-//   enddate: {
-//     type: String,
-//     required: true,
-//   },
-//   numberofteams: {
-//     type: Number,
-//     required: true,
-//   },
-//   tournamenttype: {
-//     type: String,
-//     required: true,
-//   },
-// });
-
-// module.exports = mongoose.model("Tournament", TournamentSchema);
-
 const mongoose = require("mongoose");
+const Group = require("./Group"); // Import the Group model
 
 const TournamentSchema = new mongoose.Schema(
   {
@@ -78,12 +51,18 @@ const TournamentSchema = new mongoose.Schema(
       required: true,
     },
     managerId: {
-      type: mongoose.Schema.Types.ObjectId, // Use ObjectId to reference another document
-      ref: "Manager", // Reference the 'Manager' model (or whatever model holds manager data)
-      required: true, // Ensure that a manager is always associated with a tournament
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Manager",
+      required: true,
     },
+    groups: [Group.schema], // Reference the Group schema
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Tournament", TournamentSchema);
+// Check if the Tournament model already exists
+const Tournament =
+  mongoose.models.Tournament || mongoose.model("Tournament", TournamentSchema);
+
+// Export Tournament model
+module.exports = Tournament;

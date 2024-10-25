@@ -3,9 +3,9 @@ const {
   createTournament,
   upload,
   getTournamentHistory,
+  getTournamentById,
   deleteTournament,
   updateTournament,
-  getTournamentById,
   updateCourt,
   updateTime,
   autoSaveTournamentInput,
@@ -20,6 +20,9 @@ router.post("/tournaments", upload.single("image"), (req, res) =>
 
 //Route to get tournament history
 router.get("/get-tournament-history", getTournamentHistory);
+
+// Route to get a tournament by ID
+router.get("/tournaments/:id", getTournamentById); // Fetch tournament by ID
 
 // // Route to get all tournaments
 // router.get("/tournaments", getTournaments);

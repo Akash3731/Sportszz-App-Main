@@ -204,6 +204,7 @@ const teamHistory = [
 const Tournament = () => {
   const [teamData, setTeamData] = useState(teamHistory);
   const [tournamentData, setTournamentData] = useState([]);
+  const [tournamentId, setTournamentId] = useState(null);
   const navigation = useNavigation();
 
   const navigateToCreateTournament = () => {
@@ -211,7 +212,10 @@ const Tournament = () => {
   };
 
   const navigateToUserDetails = (Create_Group) => {
-    navigation.navigate("Create_Group", { Create_Group });
+    navigation.navigate("Create_Group", {
+      Create_Group,
+      id: tournamentId,
+    });
   };
 
   const toggleTeamAdded = (teamId) => {
@@ -299,6 +303,12 @@ const Tournament = () => {
         if (data.success) {
           console.log("Tournament data:", data.data);
           setTournamentData(data.data);
+
+          // Assuming data.data[0] has the tournamentId if it exists
+          if (data.data.length > 0) {
+            setTournamentId(data.data[0]._id); // Set the tournament ID here
+          }
+
           console.log("Tournament data set successfully:", data.data);
         } else {
           console.error("Failed to fetch tournament history:", data.message);

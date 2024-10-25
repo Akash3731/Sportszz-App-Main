@@ -175,7 +175,25 @@ require("dotenv").config();
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
+// Importing models
+const Player = require("../Modal/Player");
+const Team = require("../Modal/Team");
+const Group = require("../Modal/Group");
+const Tournament = require("../Modal/Tournament");
+
+// Set up Multer for file uploads with defined storage configuration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // Specify the upload directory
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname); // Get the original file extension
+    cb(null, Date.now() + ext); // Set the file name with the extension
+  },
+});
+
+// Create the upload middleware using the storage configuration
+const upload = multer({ storage: storage }); // Use the 'storage' defined above
 
 // Register a new user (this remains unchanged)
 router.post("/register", async (req, res) => {
@@ -341,6 +359,93 @@ router.get("/managerId", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching manager ID",
+      error: error.message,
+    });
+  }
+});
+
+{
+  /* Team Management */
+}
+
+router.post("/upload", upload.single("image"), async (req, res) => {
+  // Check if file is uploaded
+  if (!req.file) {
+    return res
+      .status(400)
+      .json({ success: false, message: "No file uploaded" });
+  }
+
+  const { name, tournamentId } = req.body;
+
+  // Validate required fields
+  if (!name || !tournamentId) {
+    return res.status(400).json({
+      success: false,
+      message: "Group name and tournament ID are required.",
+    });
+  }
+
+  try {
+    const imageUrl = req.file.path.replace(/\\/g, "/");
+    console.log("Image saved at:", imageUrl); // Log the file path
+
+    // Create a new Group document
+    const group = new Group({
+      name,
+      tournamentId,
+      image: `http://192.168.1.15:5050/api/uploads/${path.basename(imageUrl)}`,
+    });
+
+    await group.save(); // Save the group document
+
+    res.status(200).json({
+      success: true,
+      group: {
+        ...group._doc,
+        image: `http://192.168.1.15:5050/api/uploads/${path.basename(
+          imageUrl
+        )}`,
+      },
+    });
+  } catch (error) {
+    console.error("Error processing image upload:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+// Serve uploaded files
+router.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Endpoint to add a group
+router.post("/add-groups", upload.single("image"), async (req, res) => {
+  const { name, tournamentId } = req.body;
+  const imageUrl = req.file ? req.file.path : null; // Get image path
+
+  try {
+    // Create a new group with the provided data
+    const newGroup = new Group({
+      name,
+      tournamentId,
+      image: imageUrl,
+    });
+
+    // Save the new group to the database
+    await newGroup.save();
+
+    // Send success response
+    return res.status(201).json({
+      success: true,
+      message: "Group added successfully!",
+      group: newGroup,
+    });
+  } catch (error) {
+    console.error("Error saving group:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add group.",
       error: error.message,
     });
   }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,19 +14,54 @@ import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import * as ImagePicker from "expo-image-picker"; // Use expo-image-picker to select images
 import axios from "axios";
 import config from "../components/config";
+import * as FileSystem from "expo-file-system";
 
-const TournamentScreen = ({ navigation }) => {
-  const [tournamentName, setTournamentName] = useState("");
+const TournamentScreen = ({ navigation, route }) => {
+  const [groupName, setgroupName] = useState("");
   const [groups, setGroups] = useState([]);
-  const [imageUri, setImageUri] = useState(null); // State for storing the image URI
+  const [imageUri, setImageUri] = useState(null);
+  const [tournamentId, setTournamentId] = useState(null);
 
-  const handleTournamentNameSubmit = () => {
-    if (tournamentName !== "") {
-      setGroups([
-        ...groups,
-        { name: tournamentName, teams: [{ teamName: "" }, { teamName: "" }] },
-      ]);
-      setTournamentName("");
+  // Fetch tournament ID directly from the database using the provided ID from route params
+  useEffect(() => {
+    const fetchTournamentId = async () => {
+      const tournamentId = route.params?.id; // Use optional chaining to avoid undefined error
+      if (!tournamentId) {
+        Alert.alert("Error", "Tournament ID is not available.");
+        return; // Exit early if ID is not defined
+      }
+
+      try {
+        console.log("Fetching tournament with ID:", tournamentId); // Log the ID being fetched
+        const response = await axios.get(
+          `${config.backendUrl}/tournaments/${tournamentId}`
+        );
+        if (response.data.success) {
+          setTournamentId(response.data.tournamentId);
+        } else {
+          Alert.alert("Error", response.data.message);
+        }
+      } catch (error) {
+        console.error(
+          "Error fetching tournament ID:",
+          error.response ? error.response.data : error.message
+        );
+        Alert.alert("Error", "Could not fetch tournament ID.");
+      }
+    };
+
+    fetchTournamentId();
+  }, [route.params?.id]);
+
+  const handlegroupNameSubmit = () => {
+    if (groupName !== "") {
+      const newGroup = {
+        name: groupName,
+        teams: [{ teamName: "" }, { teamName: "" }],
+      };
+      setGroups([...groups, newGroup]);
+      console.log("New Group Added:", newGroup); // Log the new group being added
+      setgroupName(""); // Reset the tournament name after submission
     }
   };
 
@@ -47,8 +82,8 @@ const TournamentScreen = ({ navigation }) => {
     setGroups(newGroups);
   };
 
+  // Update your existing pickImage function
   const pickImage = async () => {
-    // Ask the user for permission to access the media library
     const permissionResult =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -57,7 +92,6 @@ const TournamentScreen = ({ navigation }) => {
       return;
     }
 
-    // Launch the image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -67,23 +101,35 @@ const TournamentScreen = ({ navigation }) => {
     if (!result.canceled) {
       const selectedImageUri = result.assets[0].uri;
       console.log("Image selected:", selectedImageUri);
-      setImageUri(selectedImageUri); // Set the selected image URI to state
-      uploadImage(selectedImageUri); // Call the function to upload the image
+      setImageUri(selectedImageUri);
+      await uploadImage(selectedImageUri); // Pass only the image URI to the upload function
     }
   };
 
+  const handleImageUpload = () => {
+    if (groupName === "") {
+      Alert.alert(
+        "Error",
+        "Please enter a group name before uploading an image."
+      );
+      return;
+    }
+    pickImage(); // Start the image picking and uploading process
+  };
+
+  // Upload function
   const uploadImage = async (uri) => {
     const formData = new FormData();
-
-    // Extract the file extension
     const filename = uri.split("/").pop();
     const fileType = filename.split(".").pop();
 
     formData.append("image", {
       uri,
-      name: filename, // Use the actual file name
-      type: `image/${fileType}`, // Set the correct image MIME type
+      name: filename,
+      type: `image/${fileType}`,
     });
+    formData.append("name", groupName);
+    formData.append("tournamentId", tournamentId);
 
     try {
       const response = await axios.post(
@@ -95,13 +141,18 @@ const TournamentScreen = ({ navigation }) => {
           },
         }
       );
-      console.log("Image uploaded successfully:", response.data.imageUrl);
-      setImageUri(response.data.imageUrl); // Update the state with the image URL
+
+      if (response.data.success) {
+        console.log("Image uploaded successfully:", response.data.group.image);
+        setImageUri(response.data.group.image);
+
+        // Cache the image after uploading
+        await cacheImage(response.data.group.image);
+      } else {
+        Alert.alert("Upload Failed", response.data.message);
+      }
     } catch (error) {
-      console.error(
-        "Error uploading image:",
-        error.response ? error.response.data : error.message
-      );
+      console.error("Error uploading image:", error);
       Alert.alert(
         "Upload Failed",
         "Could not upload the image. Please try again."
@@ -109,17 +160,138 @@ const TournamentScreen = ({ navigation }) => {
     }
   };
 
+  // Cache the image using expo-file-system
+  const cacheImage = async (imageUrl) => {
+    try {
+      const fileUri = `${FileSystem.documentDirectory}${imageUrl
+        .split("/")
+        .pop()}`;
+      console.log("Attempting to cache image from:", imageUrl);
+
+      // Download the image
+      const response = await FileSystem.downloadAsync(imageUrl, fileUri);
+
+      // Check the response status
+      if (response.status === 200) {
+        console.log("Image cached successfully at:", fileUri);
+        return fileUri; // Return the cached file URI
+      } else {
+        console.error("Failed to cache image, status:", response.status);
+        Alert.alert("Cache Failed", "Could not cache the image.");
+      }
+    } catch (error) {
+      console.error("Error during caching image:", error);
+      Alert.alert("Cache Failed", "An error occurred while caching the image.");
+    }
+  };
+
+  const addGroup = async () => {
+    // Ensure groupName exists before submitting the group
+    if (groups.length === 0 && groupName !== "") {
+      handlegroupNameSubmit(); // Add the group using the current groupName
+    }
+
+    console.log("Before Adding Group: ", { groupName, groups });
+
+    // Wait a moment to ensure state is updated before validation
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Validate if group name and teams are present
+    if (groups.length === 0) {
+      Alert.alert(
+        "Error",
+        "Please provide a group name and at least one team."
+      );
+      console.log("Validation failed: group name or teams are missing.");
+      return;
+    }
+
+    const formData = new FormData();
+
+    // Prepare image data if an image was selected
+    if (imageUri) {
+      const filename = imageUri.split("/").pop();
+      const fileType = filename.split(".").pop();
+
+      formData.append("image", {
+        uri: imageUri,
+        name: filename,
+        type: `image/${fileType}`,
+      });
+      console.log("Image selected:", {
+        uri: imageUri,
+        name: filename,
+        type: `image/${fileType}`,
+      });
+    } else {
+      console.log("No image selected.");
+    }
+
+    // Append group name and tournament ID to form data
+    formData.append("name", groupName); // Use 'name' for group name
+    formData.append("tournamentId", tournamentId); // Use the tournament ID
+    console.log("FormData after appending group name and tournament ID:", {
+      name: groupName,
+      tournamentId,
+    });
+
+    // Include teams in the form data
+    groups.forEach((group) => {
+      group.teams.forEach((team) => {
+        formData.append("teams[]", JSON.stringify(team)); // Append each team
+        console.log("Appending team to FormData:", JSON.stringify(team));
+      });
+    });
+
+    try {
+      console.log("Sending data to server...");
+      const response = await axios.post(
+        `${config.backendUrl}/add-groups`, // Ensure this endpoint exists on your server
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      console.log("Response from server:", response.data); // Log the server response
+
+      if (response.data.success) {
+        Alert.alert("Success", "Group added successfully!");
+        console.log("Group added successfully:", response.data.group);
+
+        // Optionally reset state or navigate away
+        setGroups([]); // Clear groups after successful submission
+        setImageUri(null); // Clear the image
+        setgroupName(""); // Clear the group name
+      } else {
+        Alert.alert("Error", response.data.message);
+        console.log("Error from server:", response.data.message); // Log error message
+      }
+    } catch (error) {
+      console.error("Error adding group:", error);
+      Alert.alert(
+        "Upload Failed",
+        "Could not add the group. Please try again."
+      );
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* Image Upload Section */}
-      <Text style={styles.text}>Add Team Logo</Text>
+      <Text style={styles.text}>Add Group Logo</Text>
       <View style={styles.imageContainer}>
         {imageUri ? (
           <Image style={styles.image} source={{ uri: imageUri }} />
         ) : (
           <Image style={styles.image} source={{ uri: "" }} />
         )}
-        <TouchableOpacity style={styles.iconContainer} onPress={pickImage}>
+        <TouchableOpacity
+          style={styles.iconContainer}
+          onPress={handleImageUpload}
+        >
           <MaterialIcons name="add" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -128,13 +300,10 @@ const TournamentScreen = ({ navigation }) => {
       <TextInput
         style={styles.input}
         placeholder="Name your group"
-        value={tournamentName}
-        onChangeText={(text) => setTournamentName(text)}
+        value={groupName}
+        onChangeText={(text) => setgroupName(text)}
       />
-      <TouchableOpacity
-        style={styles.createGroupButton}
-        onPress={handleTournamentNameSubmit}
-      >
+      <TouchableOpacity style={styles.createGroupButton} onPress={addGroup}>
         <Text style={styles.createGroupButtonText}>Create Group</Text>
       </TouchableOpacity>
 
