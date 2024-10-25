@@ -98,6 +98,7 @@ const TournamentScreen = ({ navigation, route }) => {
   };
 
   // Update your existing pickImage function
+  // Update your existing pickImage function
   const pickImage = async () => {
     const permissionResult =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -117,87 +118,81 @@ const TournamentScreen = ({ navigation, route }) => {
       const selectedImageUri = result.assets[0].uri;
       console.log("Image selected:", selectedImageUri);
       setImageUri(selectedImageUri);
-      await uploadImage(selectedImageUri); // Pass only the image URI to the upload function
+      // Remove the uploadImage call from here as it's causing duplicate group creation
+      // await uploadImage(selectedImageUri);
     }
   };
 
   const handleImageUpload = () => {
-    if (groupName === "") {
+    if (groupName.trim() === "") {
       Alert.alert(
         "Error",
         "Please enter a group name before uploading an image."
       );
       return;
     }
-    pickImage(); // Start the image picking and uploading process
+    pickImage();
   };
 
-  // Update the uploadImage function to use the new caching system
-  const uploadImage = async (uri) => {
-    const formData = new FormData();
-    const filename = uri.split("/").pop();
-    const fileType = filename.split(".").pop();
+  // const uploadImage = async (uri) => {
+  //   const formData = new FormData();
+  //   const filename = uri.split("/").pop();
+  //   const fileType = filename.split(".").pop();
 
-    formData.append("image", {
-      uri,
-      name: filename,
-      type: `image/${fileType}`,
-    });
-    formData.append("name", groupName);
-    formData.append("tournamentId", tournamentId);
+  //   formData.append("image", {
+  //     uri,
+  //     name: filename,
+  //     type: `image/${fileType}`,
+  //   });
+  //   formData.append("name", groupName.trim());
+  //   formData.append("tournamentId", tournamentId);
 
-    try {
-      const response = await axios.post(
-        `${config.backendUrl}/add-groups`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+  //   try {
+  //     const response = await axios.post(
+  //       `${config.backendUrl}/add-groups`,
+  //       formData,
+  //       {
+  //         headers: {
+  //           "Content-Type": "multipart/form-data",
+  //         },
+  //       }
+  //     );
 
-      if (response.data.success) {
-        const imageUrl = response.data.group.image;
-        console.log("Image uploaded successfully:", imageUrl);
+  //     if (response.data.success) {
+  //       const imageUrl = response.data.group.image;
+  //       console.log("Image uploaded successfully:", imageUrl);
 
-        // Cache the image
-        const cachedUri = await cacheImage(imageUrl);
-        if (cachedUri) {
-          setImageUri(imageUrl); // Set the remote URL for future reference
-          console.log("Image cached at:", cachedUri);
-        }
-      } else {
-        Alert.alert("Upload Failed", response.data.message);
-      }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      Alert.alert(
-        "Upload Failed",
-        error.response?.data?.message ||
-          "Could not upload the image. Please try again."
-      );
-    }
-  };
+  //       const cachedUri = await cacheImage(imageUrl);
+  //       if (cachedUri) {
+  //         setImageUri(imageUrl);
+  //         console.log("Image cached at:", cachedUri);
+  //       }
+  //     } else {
+  //       Alert.alert("Upload Failed", response.data.message);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error uploading image:", error);
+  //     Alert.alert(
+  //       "Upload Failed",
+  //       error.response?.data?.message ||
+  //         "Could not upload the image. Please try again."
+  //     );
+  //   }
+  // };
 
-  // Cache the image using expo-file-system
-  // Frontend changes - Update the caching function
   const cacheImage = async (imageUrl) => {
     try {
-      // Create a unique filename for the cached image
       const filename = `cached_${imageUrl.split("/").pop()}`;
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
 
       console.log("Attempting to cache image from:", imageUrl);
 
-      // First check if the file already exists in cache
       const fileInfo = await FileSystem.getInfoAsync(fileUri);
       if (fileInfo.exists) {
         console.log("Image already cached at:", fileUri);
         return fileUri;
       }
 
-      // Download the image with proper error handling
       const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
 
       if (downloadResult.status === 200) {
@@ -209,7 +204,6 @@ const TournamentScreen = ({ navigation, route }) => {
     } catch (error) {
       console.error("Error during caching image:", error);
 
-      // Provide more specific error messages
       if (error.response?.status === 404) {
         Alert.alert(
           "Cache Failed",
@@ -229,54 +223,66 @@ const TournamentScreen = ({ navigation, route }) => {
     setLoading(true);
     console.log("Group Name:", groupName);
 
-    // Check if groupName is valid
-    if (groupName.trim() === "") {
+    const trimmedGroupName = groupName.trim();
+
+    if (trimmedGroupName === "") {
       Alert.alert("Error", "Please provide a group name.");
       setLoading(false);
       return;
     }
 
-    // Prepare the form data first
-    const formData = new FormData();
-    if (imageUri) {
-      const filename = imageUri.split("/").pop();
-      const fileType = filename.split(".").pop();
-
-      console.log("Appending image:", {
-        uri: imageUri,
-        name: filename,
-        type: `image/${fileType}`,
-      });
-      formData.append("image", {
-        uri: imageUri, // Ensure this is the local file URI
-        name: filename,
-        type: `image/${fileType}`,
-      });
-    }
-
-    formData.append("name", groupName.trim());
-    formData.append("tournamentId", tournamentId);
-    console.log("Form Data Prepared:", formData); // Log form data before sending
-
     try {
-      // Fetch updated groups from server to get the latest state
-      await fetchGroups(tournamentId);
+      // Get current groups first
+      const groupsResponse = await axios.get(
+        `${config.backendUrl}/tournaments/${tournamentId}/groups`
+      );
 
-      // Check for duplicate group names using the freshly fetched groups
-      const isDuplicate = groups.some((group) => {
-        console.log("Checking group:", group.groupname);
-        return (
-          group.groupname &&
-          group.groupname.toLowerCase() === groupName.trim().toLowerCase()
-        );
+      const currentGroups = groupsResponse.data.groups || [];
+
+      // Improved duplicate check with exact matching and proper string comparison
+      const isDuplicate = currentGroups.some((group) => {
+        const existingName = (group.groupname || group.name || "")
+          .trim()
+          .toLowerCase();
+        const newName = trimmedGroupName.toLowerCase();
+        return existingName === newName;
       });
 
       if (isDuplicate) {
         Alert.alert("Error", "A group with this name already exists.");
         setLoading(false);
-        return; // Early return to prevent submission
+        return;
       }
 
+      // Prepare form data for new group
+      const formData = new FormData();
+
+      if (imageUri) {
+        const filename = imageUri.split("/").pop();
+        const fileType = filename.split(".").pop();
+        const isLocalFile = imageUri.startsWith("file://");
+
+        if (isLocalFile) {
+          console.log("Appending local image:", {
+            uri: imageUri,
+            name: filename,
+            type: `image/${fileType}`,
+          });
+
+          formData.append("image", {
+            uri: imageUri,
+            name: filename,
+            type: `image/${fileType}`,
+          });
+        } else {
+          console.log("Using existing remote image URL");
+        }
+      }
+
+      formData.append("name", trimmedGroupName);
+      formData.append("tournamentId", tournamentId);
+
+      // Add the group
       const response = await axios.post(
         `${config.backendUrl}/add-groups`,
         formData,
@@ -287,34 +293,41 @@ const TournamentScreen = ({ navigation, route }) => {
         }
       );
 
-      console.log("Response from server:", response.data); // Log the server response
+      console.log("Response from server:", response.data);
 
       if (response.data.success) {
+        // Cache the image if it was part of the response
+        if (response.data.group && response.data.group.image) {
+          await cacheImage(response.data.group.image);
+        }
+
         Alert.alert("Success", "Group added successfully!");
-
-        // Clear form state
         setImageUri(null);
-        setGroupName(""); // Clear the group name
-
-        // Fetch updated groups list after adding the new group
-        await fetchGroups(tournamentId); // Fetch to get the latest state
+        setGroupName("");
+        await fetchGroups(tournamentId);
       } else {
-        // If the server indicates failure, show the message
         Alert.alert("Error", response.data.message);
       }
     } catch (error) {
       console.error("Error adding group:", error);
-      console.log("Error response data:", error.response?.data);
-      // Show an appropriate error message based on the response from the server
       Alert.alert(
         "Upload Failed",
         error.response?.data?.message ||
           "Could not add the group. Please try again."
       );
     } finally {
-      setLoading(false); // Reset loading state regardless of outcome
+      setLoading(false);
     }
   };
+
+  // Add cleanup function for component unmount
+  useEffect(() => {
+    return () => {
+      // Clear the form state when component unmounts
+      setImageUri(null);
+      setGroupName("");
+    };
+  }, []);
 
   const deleteGroup = async (tournamentId, groupId) => {
     console.log(
@@ -354,38 +367,19 @@ const TournamentScreen = ({ navigation, route }) => {
   // Function to fetch groups
   // Function to fetch groups
   const fetchGroups = async (tournamentId) => {
-    console.log("Fetching groups for tournament ID:", tournamentId); // Log the ID
-
     try {
       const response = await axios.get(
         `${config.backendUrl}/tournaments/${tournamentId}/groups`
       );
-
-      // Check if groups exist in the response
       if (response.data.success) {
-        if (response.data.groups && Array.isArray(response.data.groups)) {
-          setGroups(response.data.groups); // Update local state with fetched groups
-        } else {
-          setGroups([]); // Set groups to empty array if no groups are found
-          console.log("No groups found for tournament ID:", tournamentId);
-        }
+        setGroups(response.data.groups);
+        console.log("Fetched groups:", response.data.groups);
       } else {
-        console.error("Failed to fetch groups:", response.data.message);
-        Alert.alert("Error", response.data.message);
+        console.error("Error in fetchGroups:", response.data.message);
       }
     } catch (error) {
       console.error("Error fetching groups:", error);
-      // Log the error response for debugging
-      if (error.response) {
-        console.error("Error response data:", error.response.data);
-        Alert.alert(
-          "Error",
-          error.response.data.message ||
-            "Could not fetch groups. Please try again."
-        );
-      } else {
-        Alert.alert("Error", "Could not fetch groups. Please try again.");
-      }
+      Alert.alert("Error", "Could not fetch groups. Please try again.");
     }
   };
 

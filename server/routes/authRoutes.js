@@ -379,13 +379,13 @@ router.get("/managerId", async (req, res) => {
 // Serve files from the 'uploads' directory
 router.use("/uploads", express.static(uploadDir));
 
+//Create a group
 router.post("/add-groups", upload.single("image"), async (req, res) => {
   console.log("Request body:", req.body);
   console.log("Uploaded file:", req.file);
 
   const { name, tournamentId } = req.body;
 
-  // Check for required fields
   if (!name || !tournamentId) {
     return res.status(400).json({
       success: false,
@@ -394,35 +394,46 @@ router.post("/add-groups", upload.single("image"), async (req, res) => {
   }
 
   try {
-    // Find the tournament by ID
-    const tournament = await Tournament.findById(tournamentId);
+    const tournament = await Tournament.findById(tournamentId).lean();
     if (!tournament) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Tournament not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
     }
 
-    // Check for duplicate group names within the tournament (case-insensitive)
+    // Normalize the name for comparison
+    const normalizedNewName = name.trim().toLowerCase();
+
+    // Check for duplicates
     const isDuplicate = tournament.groups.some(
-      (group) =>
-        group.groupname && group.groupname.toLowerCase() === name.toLowerCase()
+      (group) => (group.groupname || "").toLowerCase() === normalizedNewName
     );
 
     if (isDuplicate) {
+      // If a file was uploaded, clean it up since we won't be using it
+      if (req.file) {
+        try {
+          await fs.unlink(req.file.path);
+        } catch (unlinkError) {
+          console.error("Error removing uploaded file:", unlinkError);
+        }
+      }
+
       return res.status(400).json({
         success: false,
         message: "A group with this name already exists in the tournament.",
       });
     }
 
-    // Process image if uploaded
+    // Process image
     let imageUrl = null;
     if (req.file) {
-      const filename = req.file.filename; // Use filename from multer
+      const filename = req.file.filename;
       imageUrl = `${config.backendUrl}/uploads/${filename}`;
     }
 
-    // Create a new group
+    // Create new group with MongoDB ObjectId
     const newGroup = {
       groupname: name.trim(),
       tournamentId,
@@ -431,9 +442,12 @@ router.post("/add-groups", upload.single("image"), async (req, res) => {
       _id: new mongoose.Types.ObjectId(),
     };
 
-    // Add the new group to the tournament
-    tournament.groups.push(newGroup);
-    await tournament.save();
+    // Update tournament with new group
+    await Tournament.findByIdAndUpdate(
+      tournamentId,
+      { $push: { groups: newGroup } },
+      { new: true }
+    );
 
     return res.status(201).json({
       success: true,
@@ -446,8 +460,20 @@ router.post("/add-groups", upload.single("image"), async (req, res) => {
       },
     });
   } catch (error) {
+    // Clean up uploaded file if there was an error
+    if (req.file) {
+      try {
+        await fs.unlink(req.file.path);
+      } catch (unlinkError) {
+        console.error("Error removing uploaded file:", unlinkError);
+      }
+    }
+
     console.error("Error adding group:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
   }
 });
 
