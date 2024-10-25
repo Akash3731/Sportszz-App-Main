@@ -18,28 +18,35 @@ import config from "../components/config.cjs";
 import * as FileSystem from "expo-file-system";
 
 const TournamentScreen = ({ navigation, route }) => {
-  const [groupName, setgroupName] = useState("");
-  const [groups, setGroups] = useState([]);
+  const [groupName, setGroupName] = useState("");
+  const [groups, setGroups] = useState([]); // State to hold multiple groups
   const [imageUri, setImageUri] = useState(null);
   const [tournamentId, setTournamentId] = useState(null);
+  const [groupId, setGroupId] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch tournament ID directly from the database using the provided ID from route params
   useEffect(() => {
     const fetchTournamentId = async () => {
-      const tournamentId = route.params?.id; // Use optional chaining to avoid undefined error
+      const tournamentId = route.params?.id; // Get the tournament ID from route params
+      console.log("Navigated to TournamentScreen with ID:", tournamentId); // Debug log
+
       if (!tournamentId) {
         Alert.alert("Error", "Tournament ID is not available.");
         return; // Exit early if ID is not defined
       }
 
       try {
-        console.log("Fetching tournament with ID:", tournamentId); // Log the ID being fetched
+        console.log("Fetching tournament with ID:", tournamentId);
         const response = await axios.get(
           `${config.backendUrl}/tournaments/${tournamentId}`
         );
+
+        console.log("Response from tournament fetch:", response.data); // Debug log
+
         if (response.data.success) {
           setTournamentId(response.data.tournamentId);
+          console.log("Setting tournament ID:", response.data.tournamentId); // Debug log
+          fetchGroups(response.data.tournamentId); // Fetch groups once tournamentId is set
         } else {
           Alert.alert("Error", response.data.message);
         }
@@ -55,34 +62,40 @@ const TournamentScreen = ({ navigation, route }) => {
     fetchTournamentId();
   }, [route.params?.id]);
 
+  useEffect(() => {
+    if (tournamentId) {
+      fetchGroups(tournamentId); // Call fetchGroups when tournamentId is set
+    }
+  }, [tournamentId]);
+
   const handlegroupNameSubmit = () => {
     if (groupName !== "") {
-      const newGroup = {
-        name: groupName,
-        teams: [{ teamName: "" }, { teamName: "" }],
-      };
-      setGroups([...groups, newGroup]);
-      console.log("New Group Added:", newGroup); // Log the new group being added
-      setgroupName(""); // Reset the tournament name after submission
+      // Initialize with two teams (two input fields)
+      setGroups([
+        ...groups,
+        { name: groupName, teams: [{ teamName: "" }, { teamName: "" }] },
+      ]);
+      setgroupName(""); // Clear the input after setting the name
     }
   };
 
   const addTeam = (index) => {
     const newGroups = [...groups];
+    // Add only one additional team input
     newGroups[index].teams.push({ teamName: "" });
     setGroups(newGroups);
   };
 
   const removeTeam = (groupIndex, teamIndex) => {
     const newGroups = [...groups];
-    newGroups[groupIndex].teams.splice(teamIndex, 1);
+    newGroups[groupIndex].teams.splice(teamIndex, 1); // Remove the specified team
     setGroups(newGroups);
   };
 
-  // const deleteGroup = (index) => {
-  //   const newGroups = groups.filter((_, i) => i !== index);
-  //   setGroups(newGroups);
-  // };
+  const deleteGroups = (index) => {
+    const newGroups = groups.filter((_, i) => i !== index);
+    setGroups(newGroups);
+  };
 
   // Update your existing pickImage function
   const pickImage = async () => {
@@ -148,7 +161,7 @@ const TournamentScreen = ({ navigation, route }) => {
         const imageUrl = response.data.group.image;
         console.log("Image uploaded successfully:", imageUrl);
 
-        // Try to cache the image
+        // Cache the image
         const cachedUri = await cacheImage(imageUrl);
         if (cachedUri) {
           setImageUri(imageUrl); // Set the remote URL for future reference
@@ -161,7 +174,8 @@ const TournamentScreen = ({ navigation, route }) => {
       console.error("Error uploading image:", error);
       Alert.alert(
         "Upload Failed",
-        "Could not upload the image. Please try again."
+        error.response?.data?.message ||
+          "Could not upload the image. Please try again."
       );
     }
   };
@@ -212,31 +226,57 @@ const TournamentScreen = ({ navigation, route }) => {
   };
 
   const addGroup = async () => {
-    setLoading(true); // Start loading
-    if (groupName === "") {
+    setLoading(true);
+    console.log("Group Name:", groupName);
+
+    // Check if groupName is valid
+    if (groupName.trim() === "") {
       Alert.alert("Error", "Please provide a group name.");
-      setLoading(false); // Stop loading on error
+      setLoading(false);
       return;
     }
 
-    console.log("Before Adding Group: ", { groupName, groups });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
+    // Prepare the form data first
     const formData = new FormData();
     if (imageUri) {
       const filename = imageUri.split("/").pop();
       const fileType = filename.split(".").pop();
-      formData.append("image", {
+
+      console.log("Appending image:", {
         uri: imageUri,
+        name: filename,
+        type: `image/${fileType}`,
+      });
+      formData.append("image", {
+        uri: imageUri, // Ensure this is the local file URI
         name: filename,
         type: `image/${fileType}`,
       });
     }
 
-    formData.append("name", groupName);
+    formData.append("name", groupName.trim());
     formData.append("tournamentId", tournamentId);
+    console.log("Form Data Prepared:", formData); // Log form data before sending
 
     try {
+      // Fetch updated groups from server to get the latest state
+      await fetchGroups(tournamentId);
+
+      // Check for duplicate group names using the freshly fetched groups
+      const isDuplicate = groups.some((group) => {
+        console.log("Checking group:", group.groupname);
+        return (
+          group.groupname &&
+          group.groupname.toLowerCase() === groupName.trim().toLowerCase()
+        );
+      });
+
+      if (isDuplicate) {
+        Alert.alert("Error", "A group with this name already exists.");
+        setLoading(false);
+        return; // Early return to prevent submission
+      }
+
       const response = await axios.post(
         `${config.backendUrl}/add-groups`,
         formData,
@@ -247,96 +287,114 @@ const TournamentScreen = ({ navigation, route }) => {
         }
       );
 
+      console.log("Response from server:", response.data); // Log the server response
+
       if (response.data.success) {
         Alert.alert("Success", "Group added successfully!");
+
+        // Clear form state
         setImageUri(null);
-        setgroupName("");
+        setGroupName(""); // Clear the group name
 
-        // Update local state with the newly added group
-        setGroups((prevGroups) => {
-          const groupExists = prevGroups.some(
-            (group) => group.groupname === groupName
-          );
-          if (!groupExists) {
-            return [
-              ...prevGroups,
-              { groupname: groupName, _id: response.data.group._id, teams: [] },
-            ];
-          }
-          return prevGroups; // If it exists, return previous groups
-        });
-
-        // Optionally refetch groups to ensure all data is up-to-date
-        // fetchGroups(); // Uncomment this if you want to fetch again
+        // Fetch updated groups list after adding the new group
+        await fetchGroups(tournamentId); // Fetch to get the latest state
       } else {
+        // If the server indicates failure, show the message
         Alert.alert("Error", response.data.message);
       }
     } catch (error) {
       console.error("Error adding group:", error);
+      console.log("Error response data:", error.response?.data);
+      // Show an appropriate error message based on the response from the server
       Alert.alert(
         "Upload Failed",
-        "Could not add the group. Please try again."
+        error.response?.data?.message ||
+          "Could not add the group. Please try again."
       );
     } finally {
-      setLoading(false); // Stop loading in both success and error cases
+      setLoading(false); // Reset loading state regardless of outcome
     }
   };
 
   const deleteGroup = async (tournamentId, groupId) => {
-    setLoading(true); // Start loading
+    console.log(
+      "Deleting group with Tournament ID:",
+      tournamentId,
+      "and Group ID:",
+      groupId
+    );
+
     try {
       const response = await axios.delete(
         `${config.backendUrl}/tournaments/${tournamentId}/groups/${groupId}`
       );
+
       if (response.data.success) {
-        console.log(response.data.message);
-        fetchGroups(); // Re-fetch groups after deletion
+        console.log("Group deleted successfully!");
+
+        // Clear groupId after successful deletion
+        setGroupId(null); // Clear groupId state
+
+        // Fetch updated groups list after deletion
+        await fetchGroups(tournamentId); // Ensure this is called after the group is successfully deleted
       } else {
+        console.error("Failed to delete group:", response.data.message);
         Alert.alert("Error", response.data.message);
       }
     } catch (error) {
       console.error("Error deleting group:", error);
-      Alert.alert("Error", "Could not delete group. Please try again.");
-    } finally {
-      setLoading(false); // Stop loading in both success and error cases
+      Alert.alert(
+        "Delete Failed",
+        error.response?.data?.message ||
+          "Could not delete group. Please try again."
+      );
     }
   };
 
-  const fetchGroups = async () => {
-    if (!tournamentId) {
-      console.error("Tournament ID is not available for fetching groups.");
-      return; // Exit the function if tournamentId is null
-    }
+  // Function to fetch groups
+  // Function to fetch groups
+  const fetchGroups = async (tournamentId) => {
+    console.log("Fetching groups for tournament ID:", tournamentId); // Log the ID
 
-    setLoading(true); // Set loading state to true
     try {
       const response = await axios.get(
         `${config.backendUrl}/tournaments/${tournamentId}/groups`
       );
+
+      // Check if groups exist in the response
       if (response.data.success) {
-        setGroups(response.data.groups); // Set groups from the response
-        console.log("Fetched groups:", response.data.groups);
+        if (response.data.groups && Array.isArray(response.data.groups)) {
+          setGroups(response.data.groups); // Update local state with fetched groups
+        } else {
+          setGroups([]); // Set groups to empty array if no groups are found
+          console.log("No groups found for tournament ID:", tournamentId);
+        }
       } else {
+        console.error("Failed to fetch groups:", response.data.message);
         Alert.alert("Error", response.data.message);
       }
     } catch (error) {
       console.error("Error fetching groups:", error);
-      Alert.alert("Error", "Could not fetch groups. Please try again.");
-    } finally {
-      setLoading(false); // Reset loading state
+      // Log the error response for debugging
+      if (error.response) {
+        console.error("Error response data:", error.response.data);
+        Alert.alert(
+          "Error",
+          error.response.data.message ||
+            "Could not fetch groups. Please try again."
+        );
+      } else {
+        Alert.alert("Error", "Could not fetch groups. Please try again.");
+      }
     }
   };
 
+  // Use effect to fetch groups
   useEffect(() => {
-    console.log("Current tournamentId:", tournamentId); // Log the current value
     if (tournamentId) {
-      console.log("Fetching groups for tournament ID:", tournamentId);
-      fetchGroups(); // Fetch groups whenever tournamentId changes
-    } else {
-      console.log("Tournament ID is not available yet.");
-      setGroups([]); // Clear previous groups if tournamentId is not available
+      fetchGroups(tournamentId); // Call fetchGroups with tournamentId
     }
-  }, [tournamentId]); // This effect runs whenever tournamentId changes
+  }, [tournamentId]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -363,6 +421,7 @@ const TournamentScreen = ({ navigation, route }) => {
         value={groupName}
         onChangeText={(text) => setGroupName(text)}
       />
+
       <TouchableOpacity style={styles.createGroupButton} onPress={addGroup}>
         <Text style={styles.createGroupButtonText}>Create Group</Text>
       </TouchableOpacity>
@@ -379,24 +438,8 @@ const TournamentScreen = ({ navigation, route }) => {
             </Text>
             <TouchableOpacity
               onPress={() => {
-                Alert.alert(
-                  "Confirm Deletion",
-                  "Are you sure you want to delete this group?",
-                  [
-                    {
-                      text: "Cancel",
-                      style: "cancel", // Optional styling for the cancel button
-                    },
-                    {
-                      text: "Delete",
-                      onPress: async () => {
-                        await deleteGroup(tournamentId, group._id);
-                        fetchGroups(); // Re-fetch the groups after deletion
-                      },
-                    },
-                  ],
-                  { cancelable: true } // Allows dismissal by tapping outside
-                );
+                setGroupId(group._id); // Set groupId to the ID of the group being deleted
+                deleteGroup(tournamentId, group._id); // Delete the group
               }}
             >
               <MaterialIcons name="delete" size={24} color="gray" />
@@ -475,13 +518,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 35,
     alignItems: "center",
-  },
-  image: {
-    height: 88,
-    width: 88,
-    borderRadius: 44,
-    backgroundColor: "#D9D9D9",
-    position: "relative", // Position relative for absolute positioning of icon
+    position: "relative",
   },
   iconContainer: {
     position: "absolute",
@@ -492,7 +529,12 @@ const styles = StyleSheet.create({
     padding: 5,
     marginLeft: 5,
   },
-
+  image: {
+    height: 88,
+    width: 88,
+    borderRadius: 44,
+    backgroundColor: "#D9D9D9",
+  },
   input: {
     height: 50,
     borderColor: "#ddd",

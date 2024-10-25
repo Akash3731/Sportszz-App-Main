@@ -166,6 +166,7 @@ exports.getTournamentHistory = async (req, res) => {
 exports.getTournamentById = async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("Received tournament ID:", id); // Debug log
 
     // Validate the ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -187,7 +188,7 @@ exports.getTournamentById = async (req, res) => {
     // Return only the tournament ID
     res.status(200).json({
       success: true,
-      tournamentId: tournament._id, // or `id` if you prefer
+      tournamentId: tournament._id,
     });
   } catch (error) {
     console.error("Error fetching tournament:", error);

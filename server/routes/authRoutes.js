@@ -182,6 +182,7 @@ const Team = require("../Modal/Team");
 const Group = require("../Modal/Group");
 const Tournament = require("../Modal/Tournament");
 const config = require("../../client/components/config.cjs");
+const mongoose = require("mongoose");
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -378,8 +379,6 @@ router.get("/managerId", async (req, res) => {
 // Serve files from the 'uploads' directory
 router.use("/uploads", express.static(uploadDir));
 
-// Endpoint to add a group with image upload
-// Endpoint to add a group with image upload
 router.post("/add-groups", upload.single("image"), async (req, res) => {
   console.log("Request body:", req.body);
   console.log("Uploaded file:", req.file);
@@ -394,15 +393,6 @@ router.post("/add-groups", upload.single("image"), async (req, res) => {
     });
   }
 
-  // Check if an image was uploaded
-  let imageUrl = null;
-  if (req.file) {
-    const filename = path.basename(req.file.path);
-    imageUrl = `${config.backendUrl}/uploads/${filename}`; // Adjust the URL as necessary
-  } else {
-    console.log("No file uploaded.");
-  }
-
   try {
     // Find the tournament by ID
     const tournament = await Tournament.findById(tournamentId);
@@ -412,54 +402,92 @@ router.post("/add-groups", upload.single("image"), async (req, res) => {
         .json({ success: false, message: "Tournament not found." });
     }
 
-    // Create a new group object based on your schema
+    // Check for duplicate group names within the tournament (case-insensitive)
+    const isDuplicate = tournament.groups.some(
+      (group) =>
+        group.groupname && group.groupname.toLowerCase() === name.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      return res.status(400).json({
+        success: false,
+        message: "A group with this name already exists in the tournament.",
+      });
+    }
+
+    // Process image if uploaded
+    let imageUrl = null;
+    if (req.file) {
+      const filename = req.file.filename; // Use filename from multer
+      imageUrl = `${config.backendUrl}/uploads/${filename}`;
+    }
+
+    // Create a new group
     const newGroup = {
-      groupname: name, // Change to match your schema
-      tournamentId: tournamentId, // Ensure this is included
-      image: imageUrl, // Include image URL if available
-      teams: [], // Assuming you want an empty array for teams
+      groupname: name.trim(),
+      tournamentId,
+      image: imageUrl,
+      teams: [],
+      _id: new mongoose.Types.ObjectId(),
     };
 
-    // Push the new group to the tournament's groups array
+    // Add the new group to the tournament
     tournament.groups.push(newGroup);
-
-    // Save the tournament document
     await tournament.save();
 
     return res.status(201).json({
       success: true,
       message: "Group added successfully!",
-      group: newGroup, // Return the new group for reference
+      group: {
+        groupname: newGroup.groupname,
+        _id: newGroup._id,
+        image: newGroup.image,
+        teams: newGroup.teams,
+      },
     });
   } catch (error) {
     console.error("Error adding group:", error);
-    return res.status(500).json({ success: false, message: "Server error." });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
+// Modify the fetch groups route to ensure consistent field names
 // Route for fetching groups
 router.get("/tournaments/:tournamentId/groups", async (req, res) => {
   const { tournamentId } = req.params;
 
   try {
-    const tournament = await Tournament.findById(tournamentId).populate(
-      "groups"
-    ); // Ensure groups are populated
-    if (!tournament || tournament.groups.length === 0) {
-      return res.status(404).json({
+    // Validate tournamentId
+    if (!mongoose.Types.ObjectId.isValid(tournamentId)) {
+      return res.status(400).json({
         success: false,
-        message: "No groups found for this tournament.",
+        message: "Invalid tournament ID.",
       });
     }
-    res.json({ success: true, groups: tournament.groups });
+
+    // Find the tournament
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      groups: tournament.groups, // Return the groups array
+    });
   } catch (error) {
     console.error("Error fetching groups:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Could not fetch groups." });
+    return res.status(500).json({
+      success: false,
+      message: "Could not fetch groups.",
+    });
   }
 });
 
+// Route for deleting a group
 // Route for deleting a group
 router.delete(
   "/tournaments/:tournamentId/groups/:groupId",
@@ -467,6 +495,22 @@ router.delete(
     const { tournamentId, groupId } = req.params;
 
     try {
+      // Validate tournamentId
+      if (!mongoose.Types.ObjectId.isValid(tournamentId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid tournament ID.",
+        });
+      }
+
+      // Validate groupId
+      if (!mongoose.Types.ObjectId.isValid(groupId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid group ID.",
+        });
+      }
+
       // Find the tournament by ID
       const tournament = await Tournament.findById(tournamentId);
       if (!tournament) {
@@ -476,7 +520,7 @@ router.delete(
         });
       }
 
-      // Check if the group exists
+      // Check if the group exists in the tournament
       const groupExists = tournament.groups.some(
         (group) => group._id.toString() === groupId
       );
@@ -487,7 +531,7 @@ router.delete(
         });
       }
 
-      // Filter out the group from the tournament's groups
+      // Remove the group from the tournament's groups
       tournament.groups = tournament.groups.filter(
         (group) => group._id.toString() !== groupId
       );
@@ -501,9 +545,10 @@ router.delete(
       });
     } catch (error) {
       console.error("Error deleting group:", error);
-      return res
-        .status(500)
-        .json({ success: false, message: "Could not delete group." });
+      return res.status(500).json({
+        success: false,
+        message: "Could not delete group.",
+      });
     }
   }
 );
